@@ -1,0 +1,122 @@
+ public static void PesWebServiceMeterStatusAll()
+ {
+     string path = System.Configuration.ConfigurationManager.AppSettings["LogFilePath"].ToString();
+     string logMobName = "PesWebServiceMeterStatusAll" + DateTime.Now.ToString("ddMMyyyy hhmm") + ".txt";
+     try
+     {
+         string oradb = "Data Source=(DESCRIPTION =" + "(ADDRESS = (PROTOCOL = TCP)(HOST = 192.168.21.215)(PORT = 1521))" +
+                     "(CONNECT_DATA =" + "(SERVER = DEDICATED)" +
+                     "(SERVICE_NAME = ORCL)));" +
+                     "User Id=magnon;Password=magnon;";
+         OracleConnection con = new OracleConnection(oradb);
+         OracleCommand cmd = new OracleCommand();
+         con.Open();
+         DataTable result = new DataTable();
+         OracleDataAdapter da = new OracleDataAdapter("select DIVN, LOC_CD, GEN_DIVN, GEN_LOC_CD, COMP_PROJ_TY, COMP_DB_ID from ADDB.V_APP_API_MAST_PES order by GEN_DIVN, GEN_LOC_CD,COMP_DB_ID ", con);
+         da.Fill(result);
+         con.Close();
+         if (result.Rows.Count > 0)
+         {
+             for (int j = 0; j < result.Rows.Count; j++)
+             {
+                 Console.WriteLine(j);
+                 string DIVN = result.Rows[j][0].ToString().Trim();
+                 string LOC_CD = result.Rows[j][1].ToString().Trim();
+                 string GEN_DIVN = result.Rows[j][2].ToString().Trim();
+                 string GEN_LOC_CD = result.Rows[j][3].ToString().Trim();
+                 string COMP_PROJ_TY = result.Rows[j][4].ToString().Trim();
+                 string COMP_DB_ID = result.Rows[j][5].ToString().Trim();
+                 var data = new WebServicesUsedClasses.ClassInputPes();
+                 data.SiteID = COMP_DB_ID;
+                 data.VendorID = "PesAndroid";
+                 Counter = 0;
+                 //if(siteid)
+                 var resObject = JsonConvert.DeserializeObject<WebServicesUsedClasses.ClassResultPes>((HelperMethods.CallApiPost("https://www.pesonline8.in/WaveCityWebServices/HomeNew/MeterStatusAll", data)));
+                 OracleConnection orcon1 = new OracleConnection(oradb);
+                 orcon1.Open();
+                 try
+                 {
+                     OracleCommand orcmd1 = orcon1.CreateCommand();
+                     orcmd1.CommandText = "Delete from ADDB.T_APP_ELEC_BILL_READING_DET where DIVN='" + DIVN + "' and LOC_CD='" + LOC_CD + "' and GEN_DIVN='" + GEN_DIVN + "' and GEN_LOC_CD='" + GEN_LOC_CD + "'";
+                     int RowsAffected = orcmd1.ExecuteNonQuery();
+                     foreach (WebServicesUsedClasses.ClassResultPesData item in resObject.Data)
+                     {
+                         try
+                         {
+                             DateTime convertDateData = Convert.ToDateTime(item.DateTime);
+
+
+                             //if (item.DgPhase == 1)
+                             //    item.DgPhase = 4;
+                             //else if (item.DgPhase == 3)a
+                             //    item.DgPhase = 1;
+                             //else if (item.DgPhase == 4)
+                             //    item.DgPhase = 6;
+                             //else if (item.DgPhase == 5)
+                             //    item.DgPhase = 5;
+                             //else if (item.DgPhase == 0)
+                             //    item.DgPhase = 7;
+                             OracleCommand orcmd = orcon1.CreateCommand();
+                             orcmd.CommandText = "insert into ADDB.T_APP_ELEC_BILL_READING_DET(DIVN, LOC_CD, GEN_DIVN, GEN_LOC_CD, CUST_ID, REG_ID, METERID, DT, BALANCE, " +
+                                             "BALANCE_DG, GRID_READING, DG_READING, METER_STATUS, DG_STATUS, LOAD_IN_WATT, Type, COMP_PROJ_TY,ERP_ID,Sanction_Load_Grid,Sanction_Load_DG," +
+                                             "Load_Grid,Load_DG,Device_Slno,BALANCE_CAM,DG_Phase) VALUES('" + DIVN + "', '" + LOC_CD + "', '" + GEN_DIVN + "', '" + GEN_LOC_CD + "'," +
+                                             "'', '', '" + item.MeterID + "', '" + convertDateData.ToString("dd-MMM-yy hh:mm:ss tt").ToUpper() + "'" +
+                                             ", '" + item.Balance + "', '" + item.BalanceDG + "', '" + item.Grid + "'" +
+                                             ", '" + item.DG + "', '" + item.MeterStatus + "', '" + item.DGStatus + "', '" + item.LoadInWatt +
+                                             "', 'EL', '" + COMP_PROJ_TY + "','" + item.UniqueMeterID + "','" + item.SanctionLoad + "','" + item.SanctionLoadDg +
+                                             "','" + item.KwMainLimit + "','" + item.KwDgLimit + "','" + item.MeterNo + "','" + item.BalanceCam +
+                                             "','" + item.DgPhase + "')";
+                             int rowsUpdated = orcmd.ExecuteNonQuery();
+                             if (rowsUpdated == 0)
+                             {
+                                 Console.WriteLine("Failed : SiteID :{0}, Count {1},UniqueMeterID {2},MeterID {3},FlatNo {4}", COMP_DB_ID, Counter,item.UniqueMeterID,item.MeterID,item.ShopNo);
+                                 string Consolemessage = "Failed : SiteID :{" + COMP_DB_ID + "}, Count {" + Counter + "},UniqueMeterID {" + item.UniqueMeterID + "}, MeterID { "+item.MeterID+"}, FlatNo { "+item.ShopNo+"}";
+                                 using (StreamWriter w = File.AppendText(path + "\\" + logMobName))
+                                 {
+                                     Log(Consolemessage, 1, w);
+                                 }
+                             }
+                             else
+                             {
+                                 Console.WriteLine("Success : SiteID :{0}, Count {1},UniqueMeterID {2}", COMP_DB_ID, Counter, item.UniqueMeterID);
+                                 string Consolemessage = "Success : SiteID :{"+ COMP_DB_ID+"}, Count {"+Counter+"},UniqueMeterID {"+ item.UniqueMeterID+ "}, MeterID { " + item.MeterID + "}, FlatNo { " + item.ShopNo + "}";
+                                 using (StreamWriter w = File.AppendText(path + "\\" + logMobName))
+                                 {
+                                     Log(Consolemessage, 1, w);
+                                 }
+                                 
+                             }
+                         }
+                         catch(Exception ex)
+                         {
+                             string Consolemessage = "Failed : SiteID :{" + COMP_DB_ID + "}, Count {" + Counter + "},UniqueMeterID {" + item.UniqueMeterID + "}, MeterID { " + item.MeterID + "}, FlatNo { " + item.ShopNo + "}";
+                             using (StreamWriter w = File.AppendText(path + "\\" + logMobName))
+                             {
+                                 Log(Consolemessage, 1, w);
+                             }
+                         }
+                         Counter++;
+                     }
+                 }
+                 catch(Exception ex)
+                 {
+                     string Consolemessage = "Failed : SiteID :{" + COMP_DB_ID + "}, Count {" + Counter + "}";
+                     using (StreamWriter w = File.AppendText(path + "\\" + logMobName))
+                     {
+                         Log(Consolemessage, 1, w);
+                     }
+                 }
+                 orcon1.Close();
+             }
+         }
+     }
+     catch (Exception ex)
+     {
+         string message = ex.Message;
+         using (StreamWriter w = File.AppendText(path + "\\" + logMobName))
+         {
+             Log(message, 1, w);
+         }
+         Console.Write(ex.Message);
+     }
+ }
